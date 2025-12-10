@@ -147,6 +147,7 @@ class GameController(QObject):
         self.seeking_move = False
         self.is_analyzing_only = False
         self.history_index = None
+        self.analysis_results = {} # Clear previous analysis
         
         # Reset View
         self.view.board_widget.set_flipped(False)
@@ -649,6 +650,10 @@ class GameController(QObject):
 
     def exit_post_game_analysis(self):
         self.view.info_panel.show_game()
+        # User requested explicit reset of analysis artifacts when closing
+        self.analysis_results = {} 
+        self.view.board_widget.set_annotation(None)
+        self.view.board_widget.set_best_move(None)
         self.update_board_visuals()
 
     def update_board_visuals(self, board_to_show=None):

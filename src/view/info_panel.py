@@ -10,7 +10,9 @@ class AnalysisDashboard(QWidget):
     start_clicked = pyqtSignal()
     prev_clicked = pyqtSignal()
     next_clicked = pyqtSignal()
+    next_clicked = pyqtSignal()
     end_clicked = pyqtSignal()
+    toggle_best_move = pyqtSignal(bool)
     
     def __init__(self):
         super().__init__()
@@ -62,6 +64,16 @@ class AnalysisDashboard(QWidget):
         nav_layout.addWidget(self.btn_end)
         
         layout.addWidget(nav_group)
+
+        # Settings Group (New)
+        settings_group = QGroupBox("Analysis Settings")
+        settings_layout = QVBoxLayout(settings_group)
+        
+        self.chk_best_move = QCheckBox("Show Best Move Arrow")
+        self.chk_best_move.toggled.connect(self.toggle_best_move)
+        settings_layout.addWidget(self.chk_best_move)
+        
+        layout.addWidget(settings_group)
         
         # Exit Button
         self.btn_exit = QPushButton("Back to Game View")
@@ -144,6 +156,7 @@ class InfoPanel(QWidget):
         self.analysis_dashboard.prev_clicked.connect(self.prev_clicked)
         self.analysis_dashboard.next_clicked.connect(self.next_clicked)
         self.analysis_dashboard.end_clicked.connect(self.end_clicked)
+        self.analysis_dashboard.toggle_best_move.connect(self.toggle_arrows_clicked) # Connect to same signal as game view
         
         self.stack_layout.addWidget(self.analysis_dashboard)
         
@@ -264,6 +277,7 @@ class InfoPanel(QWidget):
         self.status_label.setText(text)
         
     def show_analysis(self):
+        self.analysis_dashboard.chk_best_move.setChecked(self.chk_arrows.isChecked())
         self.stack_layout.setCurrentWidget(self.analysis_dashboard)
         
     def show_game(self):
