@@ -1,4 +1,4 @@
-# Scacchi - Advanced Chess Analysis GUI
+# Chess - Advanced Chess Analysis GUI
 
 ![Interface Preview](assets/preview.png)
 
