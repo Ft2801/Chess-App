@@ -302,6 +302,9 @@ class GameController(QObject):
              self.engine.go(depth=14) 
 
     def navigate_history(self, direction):
+        # Hide promotion dialog when navigating
+        self.view.board_widget.hide_promotion_dialog()
+        
         self.engine.stop_search() 
         self.seeking_move = False
         
@@ -327,6 +330,9 @@ class GameController(QObject):
 
     def undo_move(self):
         if self.mode == "EvE": return
+        
+        # Hide promotion dialog if visible
+        self.view.board_widget.hide_promotion_dialog()
         
         # Stop Analysis if running
         if self.is_analyzing_game:
@@ -365,7 +371,12 @@ class GameController(QObject):
         self.update_view()
 
     def flip_board(self):
-        self.view.board_widget.set_flipped(not self.view.board_widget.flipped)
+        flipped = not self.view.board_widget.flipped
+        self.view.board_widget.set_flipped(flipped)
+        # Update captured pieces widget to reflect the flip
+        self.view.captured_pieces_top.set_board_flipped(flipped)
+        self.view.captured_pieces_bottom.set_board_flipped(flipped)
+        self.update_board_visuals()
 
     def start_post_game_analysis(self):
         from PyQt6.QtWidgets import QMessageBox
@@ -669,7 +680,11 @@ class GameController(QObject):
         # 1. Sync Board Widget pieces
         self.view.board_widget.update_board(board_to_show)
         
-        # 2. Analysis Overlays (Eval, Arrow, Annotation)
+        # 2. Update Captured Pieces Display
+        self.view.captured_pieces_top.update_captured_pieces(board_to_show)
+        self.view.captured_pieces_bottom.update_captured_pieces(board_to_show)
+        
+        # 3. Analysis Overlays (Eval, Arrow, Annotation)
         current_idx = self.history_index if self.history_index is not None else len(self.model.move_history)
         
         # Clear defaults

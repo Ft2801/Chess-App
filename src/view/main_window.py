@@ -1,12 +1,13 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QSplitter, 
-    QStackedLayout
+    QStackedLayout, QVBoxLayout
 )
 from PyQt6.QtCore import Qt
 from src.view.board_widget import BoardWidget
 from src.view.info_panel import InfoPanel
 from src.view.main_menu import MainMenu
 from src.view.eval_bar import EvalBar
+from src.view.captured_pieces import CapturedPiecesWidget
 from src.utils.styles import Styles
 
 class MainWindow(QMainWindow):
@@ -35,20 +36,37 @@ class MainWindow(QMainWindow):
         game_layout.setContentsMargins(10, 10, 10, 10)
         game_layout.setSpacing(10)
         
-        # Splitter to hold [Board, Eval, Info]
+        # Left side: Board + Captured Pieces (stacked vertically)
+        left_layout = QVBoxLayout()
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(5)
+        
+        # 1. Top Captured Pieces (White captured = Black's pieces)
+        self.captured_pieces_top = CapturedPiecesWidget(is_top=True)
+        left_layout.addWidget(self.captured_pieces_top, stretch=0)
+        
+        # 2. Board
+        self.board_widget = BoardWidget()
+        left_layout.addWidget(self.board_widget, stretch=7)
+        
+        # 3. Bottom Captured Pieces (Black captured = White's pieces)
+        self.captured_pieces_bottom = CapturedPiecesWidget(is_top=False)
+        left_layout.addWidget(self.captured_pieces_bottom, stretch=0)
+        
+        left_widget = QWidget()
+        left_widget.setLayout(left_layout)
+        
+        # Splitter to hold [Board+Captured, Eval, Info]
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # 1. Board
-        self.board_widget = BoardWidget()
-        
-        # 2. Eval Bar (Vertical)
+        # 4. Eval Bar (Vertical)
         self.eval_bar = EvalBar()
         self.eval_bar.setVisible(True) # Default visible
         
-        # 3. Info Panel
+        # 5. Info Panel
         self.info_panel = InfoPanel()
         
-        self.splitter.addWidget(self.board_widget)
+        self.splitter.addWidget(left_widget)
         self.splitter.addWidget(self.eval_bar)
         self.splitter.addWidget(self.info_panel)
         
