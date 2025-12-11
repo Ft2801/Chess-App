@@ -479,21 +479,15 @@ class BoardWidget(QWidget):
              
         square = chess.square(file, rank)
         
-        # Right Click: Highlight or start arrow
+        # Right Click: Start tracking for potential highlight or arrow
         if event.button() == Qt.MouseButton.RightButton:
             # Get the modifier key
             modifier = self._get_modifier_key(event)
             
-            # Toggle highlight on this square
-            if square in self.highlighted_squares:
-                self.highlighted_squares.pop(square)
-            else:
-                self.highlighted_squares[square] = modifier
-            
-            # Also start tracking for arrow
+            # Track right-click position but don't highlight yet
+            # We'll decide on mouseReleaseEvent if it was a click or drag
             self.right_click_start = square
             self.right_click_modifier = modifier
-            self.update()
             return
         
         # Left Click: Normal gameplay
@@ -548,7 +542,7 @@ class BoardWidget(QWidget):
             self.update()
             
     def mouseReleaseEvent(self, event):
-        # Right Click Release: Arrow drag completion
+        # Right Click Release: Arrow drag completion or simple highlight
         if event.button() == Qt.MouseButton.RightButton and self.right_click_start is not None:
             pos = event.pos()
             min_dim = min(self.width(), self.height())
@@ -571,8 +565,16 @@ class BoardWidget(QWidget):
                 
                 end_square = chess.square(file, rank)
                 
-                # If dragged to different square, add arrow
-                if end_square != self.right_click_start:
+                # If dragged to same square: simple click -> highlight
+                if end_square == self.right_click_start:
+                    # Toggle highlight on this square
+                    if self.right_click_start in self.highlighted_squares:
+                        self.highlighted_squares.pop(self.right_click_start)
+                    else:
+                        self.highlighted_squares[self.right_click_start] = self.right_click_modifier
+                
+                # If dragged to different square: add arrow (no highlight)
+                elif end_square != self.right_click_start:
                     # Check if arrow already exists and remove it (toggle)
                     arrow_exists = False
                     for arrow in self.arrows:
