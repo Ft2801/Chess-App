@@ -1,66 +1,29 @@
-# analysis_config.py
-"""
-Configuration constants for the analysis modules.
-Extracted from Scacchi-main/src/config.py
-"""
-import chess
+class Classification:
+    BRILLIANT = "brilliant"
+    CRITICAL = "critical" # great/best
+    BEST = "best"
+    EXCELLENT = "excellent"
+    OKAY = "good" # Use "good" or "okay"? TS uses "okay". App might use "good".
+    INACCURACY = "inaccuracy"
+    MISTAKE = "mistake"
+    BLUNDER = "blunder"
+    BOOK = "theory"
+    FORCED = "forced"
+    
+CLASSIFICATION_THRESHOLDS = {
+    "best": 0.01,
+    "excellent": 0.045,
+    "good": 0.08,
+    "inaccuracy": 0.12,
+    "mistake": 0.22,
+    "blunder": float('inf')
+}
 
-# --- PIECE VALUES ---
 PIECE_VALUES = {
-    chess.PAWN: 100,
-    chess.KNIGHT: 320,
-    chess.BISHOP: 330,
-    chess.ROOK: 500,
-    chess.QUEEN: 900,
-    chess.KING: 20000
+    1: 1,    # Pawn
+    2: 3,    # Knight
+    3: 3,    # Bishop
+    4: 5,    # Rook
+    5: 9,    # Queen
+    6: float('inf') # King
 }
-
-# --- EVALUATION THRESHOLDS ---
-EVAL_THRESHOLDS = {
-    'brilliant': -200,
-    'great': -100,
-    'best': 5,
-    'excellent': 20,
-    'good': 50,
-    'inaccuracy': 100,
-    'mistake': 200,
-}
-
-# --- CLASSIFICATION LABELS ---
-EVAL_CLASSIFICATIONS = {
-    'brilliant': "Brilliant (!!)",
-    'great': "Great Move (!)",
-    'best': "Best (=)",
-    'excellent': "Excellent",
-    'good': "Good",
-    'inaccuracy': "Inaccuracy (?!)",
-    'mistake': "Mistake (?)",
-    'blunder': "Blunder (??)",
-    'forced': "Forced",
-    'theory': "Theory"
-}
-
-# --- CLASSIFICATION CONSTANTS ---
-SACRIFICE_MIN_VALUE = 100
-BRILLIANT_MAX_LOSS = 150
-GREAT_MOVE_GAP = 50
-GREAT_MOVE_ADVANTAGE = 100
-GREAT_MOVE_TACTICAL_ADVANTAGE = 150
-GREAT_MOVE_LOSS_THRESHOLD = 30
-CRITICAL_THRESHOLD = 100
-ALTERNATIVE_BAD_THRESHOLD = -100
-CRITICAL_EVAL_THRESHOLD = 700
-
-# --- ACCURACY CONSTANTS ---
-WINNING_CHANCES_MATE_THRESHOLD = 32000
-WINNING_CHANCES_MULTIPLIER = -0.00368208
-ACCURACY_FORMULA_A = 103.1668100711649
-ACCURACY_FORMULA_B = -0.04354415386753951
-ACCURACY_FORMULA_C = -3.166924740191411
-VOLATILITY_MAX_WEIGHT = 12
-VOLATILITY_MIN_WEIGHT = 0.5
-VOLATILITY_WINDOW_SIZE = 2
-
-# --- CONVERSION CONSTANTS ---
-MATE_VALUE_BASE = 30000
-MATE_VALUE_DECREMENT = 100

@@ -600,8 +600,7 @@ class GameController(QObject):
         
         # Start Analysis
         # Enable MultiPV to allow "Great Move" detection (comparing best vs second best)
-        self.engine.send_command("setoption name MultiPV value 3")
-        self.engine.go(depth=20) 
+        self.engine.go(depth=20, multipv=3) 
         
         # Safety Timeout: If engine hangs for > 10 seconds, force next step
         QTimer.singleShot(10000, lambda: self.force_next_analysis_step(self.analysis_index))
@@ -655,6 +654,9 @@ class GameController(QObject):
             
             # Extract Score / Second Best Score (from validated pvs)
             if pvs:
+                # DEBUG: Check what PVs we have
+                print(f"DEBUG Engine PVs: keys={list(pvs.keys())}, content={pvs}")
+                
                 # Top Move (re-extract)
                 if 1 in pvs:
                     info = pvs[1]
@@ -702,56 +704,40 @@ class GameController(QObject):
                 for i in range(prev_idx):
                     prev_board.push(self.model.move_history[i])
                     
-                # 1. Check Forced
-                if prev_board.legal_moves.count() == 1:
-                    prev_data['type'] = 'forced'
+                # Construct top_moves for classifier
+                # IMPORTANT: Classifier expects WHITE-CENTRIC evals and handles perspective internally
+                turn_color = prev_board.turn # Side that moved
                 
-                # 2. Check Best Move
-                elif played_uci == prev_data['best_move']:
-                    # Check Sacrifice (Brilliant)
-                    if self.classifier._is_sacrifice(prev_board, played_move_obj):
-                         prev_data['type'] = 'brilliant'
-                    # Check Great (Unique good move)
-                    elif prev_data.get('second_best_cp') is not None:
-                         # Use Side-Specific Logic for Raw CP comparison or Normalized?
-                         # prev_data['cp'] is WHITE perspective.
-                         # prev_data['second_best_cp'] is RAW side-to-move perspective (from prev step logic).
-                         # WAIT. We didn't normalize second_best_cp in storage above.
-                         # Let's re-extract raw best CP for diff calculation.
-                         # If prev_data['is_white_turn']: raw_best = prev_data['cp']
-                         # Else: raw_best = -prev_data['cp']
-                         
-                         raw_best = prev_data['cp'] if prev_data['is_white_turn'] else -prev_data['cp']
-                         raw_second = prev_data['second_best_cp']
-                         
-                         diff = raw_best - raw_second # Side-to-move perspective: Best is always higher.
-                         
-                         if diff > 150:
-                             prev_data['type'] = 'great'
-                         else:
-                             prev_data['type'] = 'best'
-                    else:
-                         prev_data['type'] = 'best'
+                # 1. Best Move Eval (from prev_data) - WHITE-CENTRIC as stored
+                best_cp = prev_data['cp']  # Already white-centric
+                
+                # 2. Played Move Eval (from white_cp - which is eval of position AFTER move)
+                # white_cp is already white-centric
+                played_cp = white_cp  # Already white-centric
+                
+                fake_top_moves = {
+                    1: {'pv_move': prev_data['best_move'], 'cp': int(best_cp)}
+                }
+                
+                # Add Second Best if available
+                # second_best_cp is stored as RAW side-to-move from engine
+                # We need to convert it to white-centric
+                if prev_data.get('second_best_cp') is not None:
+                    second_cp = prev_data['second_best_cp']
+                    # second_best_cp is side-to-move, convert to white-centric
+                    if turn_color == chess.BLACK:
+                        second_cp = -second_cp  # Flip to white-centric
+                    fake_top_moves[2] = {'cp': int(second_cp)}
+                     
+                # Add Played Move as a "fake" rank
+                if played_uci != prev_data['best_move']:
+                    fake_top_moves[99] = {'pv_move': played_uci, 'cp': int(played_cp)}
                 else:
-                    # 3. Calculate Loss from Sub-optimal move
-                    # prev_cp is White Persp (Before Move)
-                    # current cp (white_cp) is White Persp (After Move)
-                    # We need Loss from Side-To-Move perspective.
+                    pass
                     
-                    if prev_data['is_white_turn']: # White Moved
-                        # Expected (Best): prev_cp
-                        # Actual (Played): white_cp (Eval of resulting pos)
-                        # Wait, Eval of resulting pos is same frame of reference (White Persp).
-                        # Loss = Best - Actual
-                        loss = prev_data['cp'] - white_cp
-                    else: # Black Moved
-                        # Black wants NEGATIVE White CP.
-                        # Best for Black: prev_cp (Negative)
-                        # Actual for Black: white_cp (from resulting pos)
-                        # Loss = Actual - Best (since lower is better for Black)
-                        loss = white_cp - prev_data['cp']
-
-                    prev_data['type'] = self.classifier.classify_from_loss(max(0, int(loss)))
+                # Call Classifier
+                classification = self.classifier.classify_move(prev_board, played_move_obj, fake_top_moves)
+                prev_data['type'] = classification
                 
                 # Update Storage
                 self.analysis_results[prev_idx] = prev_data
@@ -850,6 +836,20 @@ class GameController(QObject):
         # Switch to New Interface
         self.view.info_panel.show_analysis()
         self.view.info_panel.analysis_dashboard.update_stats(counts, accuracy)
+        
+        # Find and display the opening name
+        from src.analysis.opening_book import get_opening_name
+        last_opening = None
+        temp_board = chess.Board()
+        for move in self.model.move_history:
+            temp_board.push(move)
+            opening = get_opening_name(temp_board.fen())
+            if opening:
+                last_opening = opening
+        self.view.info_panel.analysis_dashboard.set_opening(last_opening)
+        
+        # Reset to first move so user starts from beginning
+        self.history_index = 0
         
         # Refresh board
         self.update_board_visuals()

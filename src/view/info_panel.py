@@ -50,6 +50,13 @@ class AnalysisDashboard(QWidget):
         self.lbl_current_move.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.lbl_current_move)
         
+        # Opening Name Label (NEW)
+        self.lbl_opening = QLabel("")
+        self.lbl_opening.setStyleSheet("font-size: 13px; color: #FFFFFF; font-style: italic; margin: 5px;")
+        self.lbl_opening.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_opening.setWordWrap(True)
+        layout.addWidget(self.lbl_opening)
+        
         layout.addStretch()
         
         # Navigation Analysis
@@ -98,7 +105,8 @@ class AnalysisDashboard(QWidget):
     def set_current_move_classification(self, text):
         # Map text to colors
         colors = {
-            "brilliant": "#1ABC9C", # Cyan
+            "brilliant": "#1ABCDE", # Light blue
+            "critical": "#0E86D4",  # Darker blue than brilliant
             "great": "#3498DB",     # Blue
             "best": "#2ECC71",      # Green
             "excellent": "#27AE60",
@@ -107,7 +115,7 @@ class AnalysisDashboard(QWidget):
             "mistake": "#E67E22",   # Dark Orange
             "blunder": "#C0392B",   # Red
             "forced": "#7F8C8D",
-            "book": "#9B59B6"
+            "theory": "#CD9575"
         }
         color = colors.get(text.lower(), "#ECF0F1")
         
@@ -120,6 +128,15 @@ class AnalysisDashboard(QWidget):
         
         self.lbl_current_move.setText(display_text)
         self.lbl_current_move.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {color}; margin: 5px;")
+
+    def set_opening(self, opening_name: str):
+        """Set the opening name display."""
+        if opening_name:
+            self.lbl_opening.setText(f"📖 {opening_name}")
+            self.lbl_opening.setVisible(True)
+        else:
+            self.lbl_opening.setText("")
+            self.lbl_opening.setVisible(False)
 
     def update_stats(self, counts, accuracy):
         from PyQt6.QtGui import QPixmap
