@@ -32,6 +32,9 @@ class ChessModel:
     def is_game_over(self) -> bool:
         return self.board.is_game_over()
 
+    def is_checkmate(self) -> bool:
+        return self.board.is_checkmate()
+
     def get_outcome(self):
         return self.board.outcome()
 

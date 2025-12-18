@@ -11,6 +11,7 @@ class EvalBar(QWidget):
         self.eval_value = 0.0
         self.is_mate = False
         self.mate_in = 0
+        self.result_text = ""
         
         # Animation
         self.anim = QPropertyAnimation(self, b"percent_black")
@@ -105,9 +106,20 @@ class EvalBar(QWidget):
 
     def set_eval(self, score_str):
         try:
+            # Handle Game Over
+            if score_str == "1-0":
+                 target = 1.0 # Full White
+                 self.is_mate = False 
+                 self.result_text = "1-0"
+            elif score_str == "0-1":
+                 target = 0.0 # Full Black
+                 self.is_mate = False
+                 self.result_text = "0-1"
+                 
             # Handle Mate (e.g. "M3", "+M3", "#-3")
-            if "M" in score_str or "#" in score_str:
+            elif "M" in score_str or "#" in score_str:
                 self.is_mate = True
+                self.result_text = ""
                 clean_str = score_str.replace("M", "").replace("#", "")
                 self.mate_in = int(clean_str)
                 
@@ -117,6 +129,7 @@ class EvalBar(QWidget):
                 else: target = 0.0
             else:
                 self.is_mate = False
+                self.result_text = ""
                 val = float(score_str)
                 self.eval_value = val
                 val = max(-5.0, min(5.0, val))
@@ -158,7 +171,9 @@ class EvalBar(QWidget):
         
         # Text
         text = ""
-        if self.is_mate:
+        if self.result_text:
+             text = self.result_text
+        elif self.is_mate:
             text = f"M{abs(self.mate_in)}"
         else:
             text = f"{abs(self.eval_value):.1f}"

@@ -8,6 +8,7 @@ class MainMenu(QWidget):
     pvp_clicked = pyqtSignal()
     pve_clicked = pyqtSignal(str, int) # color ("White"/"Black"), level (1-8)
     eve_clicked = pyqtSignal(int, int) # level_white, level_black
+    theme_selected = pyqtSignal(str) # New signal
     
     def __init__(self):
         super().__init__()
@@ -119,11 +120,11 @@ class MainMenu(QWidget):
         eve_settings_layout.addWidget(QLabel("White Lvl:"))
         self.slider_eve_white = QSlider(Qt.Orientation.Horizontal)
         self.slider_eve_white.setRange(1, 8)
-        self.slider_eve_white.setValue(8)
+        self.slider_eve_white.setValue(1)
         self.slider_eve_white.setFixedWidth(80)
         self.style_slider(self.slider_eve_white)
         
-        self.lbl_eve_w_val = QLabel("8")
+        self.lbl_eve_w_val = QLabel("1")
         self.lbl_eve_w_val.setFixedWidth(20)
         self.slider_eve_white.valueChanged.connect(lambda v: self.lbl_eve_w_val.setText(str(v)))
         
@@ -136,11 +137,11 @@ class MainMenu(QWidget):
         eve_settings_layout.addWidget(QLabel("Black Lvl:"))
         self.slider_eve_black = QSlider(Qt.Orientation.Horizontal)
         self.slider_eve_black.setRange(1, 8)
-        self.slider_eve_black.setValue(8)
+        self.slider_eve_black.setValue(1)
         self.slider_eve_black.setFixedWidth(80)
         self.style_slider(self.slider_eve_black)
         
-        self.lbl_eve_b_val = QLabel("8")
+        self.lbl_eve_b_val = QLabel("1")
         self.lbl_eve_b_val.setFixedWidth(20)
         self.slider_eve_black.valueChanged.connect(lambda v: self.lbl_eve_b_val.setText(str(v)))
         
@@ -156,6 +157,57 @@ class MainMenu(QWidget):
         eve_layout.addWidget(btn_eve)
         
         cards_layout.addWidget(eve_group)
+        
+        # === Theme Selection ===
+        theme_group = self.create_group_box("Board Theme")
+        theme_group.setFixedHeight(220) # Taller for preview
+        theme_layout = QHBoxLayout(theme_group)
+        
+        theme_layout.addStretch() # Center alignment
+        
+        # Preview Widget
+        self.theme_preview = ThemePreviewWidget()
+        theme_layout.addWidget(self.theme_preview)
+        
+        # Controls
+        controls_widget = QWidget()
+        controls_layout = QVBoxLayout(controls_widget)
+        
+        lbl_theme = QLabel("Select Style:")
+        controls_layout.addWidget(lbl_theme)
+        
+        from src.utils.styles import Styles
+        self.combo_theme = QComboBox()
+        self.combo_theme.addItems(list(Styles.THEMES.keys()))
+        self.combo_theme.setCurrentText("Green")
+        
+        # Style ComboBox
+        self.combo_theme.setStyleSheet("""
+            QComboBox {
+                background-color: #333;
+                color: #f0f0f0;
+                border: 1px solid #555;
+                padding: 5px;
+                border-radius: 4px;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #333;
+                color: #f0f0f0;
+                selection-background-color: #2b5b84;
+            }
+        """)
+        
+        self.combo_theme.currentTextChanged.connect(self.on_theme_changed)
+        controls_layout.addWidget(self.combo_theme)
+        controls_layout.addStretch()
+        
+        theme_layout.addWidget(controls_widget)
+        theme_layout.addStretch()
+        
+        cards_layout.addWidget(theme_group)
         
         layout.addLayout(cards_layout)
         
@@ -209,24 +261,8 @@ class MainMenu(QWidget):
         """)
 
     def style_radio(self, radio):
-         radio.setStyleSheet("""
-            QRadioButton {
-                color: #ddd;
-                background-color: transparent;
-                padding: 4px;
-            }
-            QRadioButton::indicator {
-                width: 14px;
-                height: 14px;
-                border-radius: 7px;
-                border: 2px solid #555;
-                background: #333;
-            }
-            QRadioButton::indicator:checked {
-                background: #2b5b84;
-                border: 2px solid #2b5b84;
-            }
-         """)
+         # Removed override to use global stylesheet
+         pass
 
     def style_slider(self, slider):
         slider.setStyleSheet("""
@@ -259,3 +295,71 @@ class MainMenu(QWidget):
         w_level = self.slider_eve_white.value()
         b_level = self.slider_eve_black.value()
         self.eve_clicked.emit(w_level, b_level)
+
+    def on_theme_changed(self, theme_name):
+        self.theme_preview.set_theme(theme_name)
+        self.theme_selected.emit(theme_name)
+
+class ThemePreviewWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setFixedSize(150, 150)
+        self.theme_name = "Green"
+        self.wn_pixmap = None
+        self.bn_pixmap = None
+        self._load_assets()
+
+    def _load_assets(self):
+        from PyQt6.QtGui import QPixmap
+        # Load pieces (reusing existing assets)
+        self.wn_pixmap = QPixmap("assets/pieces/wN.png")
+        self.bn_pixmap = QPixmap("assets/pieces/bN.png")
+
+    def set_theme(self, theme_name):
+        self.theme_name = theme_name
+        self.update()
+
+    def paintEvent(self, event):
+        from PyQt6.QtGui import QPainter, QColor
+        from src.utils.styles import Styles
+        
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        
+        theme = Styles.THEMES.get(self.theme_name, Styles.THEMES["Green"])
+        c_light = QColor(theme["light"])
+        c_dark = QColor(theme["dark"])
+        
+        # Draw 2x2 Board
+        # Top-Left (White), Top-Right (Black), Bottom-Left (Black), Bottom-Right (White)
+        sq_w = self.width() / 2
+        sq_h = self.height() / 2
+        
+        # 0,0 (Top Left) -> Light
+        painter.fillRect(0, 0, int(sq_w), int(sq_h), c_light)
+        # 1,0 (Top Right) -> Dark
+        painter.fillRect(int(sq_w), 0, int(sq_w), int(sq_h), c_dark)
+        # 0,1 (Bottom Left) -> Dark
+        painter.fillRect(0, int(sq_h), int(sq_w), int(sq_h), c_dark)
+        # 1,1 (Bottom Right) -> Light
+        painter.fillRect(int(sq_w), int(sq_h), int(sq_w), int(sq_h), c_light)
+        
+        # Draw Pieces (Knights in corners as requested)
+        # White Knight at Top-Left (Light)
+        # Black Knight at Bottom-Right (Light)
+        # Or "Corners"? User said "One white in a corner, one black in the other".
+        # Let's put White Knight at Top-Left, Black Knight at Bottom-Right.
+        
+        if self.wn_pixmap and not self.wn_pixmap.isNull():
+            margin = 5
+            rect = QRect(margin, margin, int(sq_w - 2*margin), int(sq_h - 2*margin))
+            painter.drawPixmap(rect, self.wn_pixmap)
+            
+        if self.bn_pixmap and not self.bn_pixmap.isNull():
+            margin = 5
+            rect = QRect(int(sq_w + margin), int(sq_h + margin), int(sq_w - 2*margin), int(sq_h - 2*margin))
+            painter.drawPixmap(rect, self.bn_pixmap)
+
+from PyQt6.QtCore import QRect # Import needed for paintEvent
+

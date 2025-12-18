@@ -10,19 +10,27 @@ def main():
     # Set App Icon
     app.setWindowIcon(QIcon("assets/logo.png"))
     
-    # Splash Screen
-    splash_pix = QPixmap("assets/logo.png")
-    # Optional: Scale if too big? 
-    # splash_pix = splash_pix.scaled(400, 400, Qt.AspectRatioMode.KeepAspectRatio)
-    
-    splash = QSplashScreen(splash_pix)
+    # Custom Loading Screen
+    from src.view.loading_screen import LoadingScreen
+    splash = LoadingScreen("assets/logo.png")
     splash.show()
     
     # Process events to render splash immediately
     app.processEvents()
     
-    # Wait 2 seconds
-    time.sleep(1)
+    # Simulate Loading Steps
+    steps = [
+        (10, "Initializing Core Systems..."),
+        (30, "Loading Engine..."),
+        (50, "Loading Assets..."),
+        (70, "Preparing User Interface..."),
+        (90, "Starting Application..."),
+        (100, "Ready!")
+    ]
+    
+    for val, msg in steps:
+        splash.update_progress(val, msg)
+        time.sleep(0.3) # Simulate work
     
     # Initialize Controller (which initializes Model and View)
     # The controller's __init__ shows the main window.

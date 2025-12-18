@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
+from src.view.fading_widget import FadingStackedWidget
 
 class AnalysisDashboard(QWidget):
     exit_clicked = pyqtSignal()
@@ -13,6 +14,7 @@ class AnalysisDashboard(QWidget):
     next_clicked = pyqtSignal()
     end_clicked = pyqtSignal()
     toggle_best_move = pyqtSignal(bool)
+    toggle_eval = pyqtSignal(bool)
     
     def __init__(self):
         super().__init__()
@@ -42,6 +44,12 @@ class AnalysisDashboard(QWidget):
         self.class_layout = QGridLayout(class_group) # Dynamic
         layout.addWidget(class_group)
         
+        # Current Move Classification Label
+        self.lbl_current_move = QLabel("-")
+        self.lbl_current_move.setStyleSheet("font-size: 16px; font-weight: bold; color: #F1C40F; margin: 5px;")
+        self.lbl_current_move.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.lbl_current_move)
+        
         layout.addStretch()
         
         # Navigation Analysis
@@ -69,6 +77,12 @@ class AnalysisDashboard(QWidget):
         settings_group = QGroupBox("Analysis Settings")
         settings_layout = QVBoxLayout(settings_group)
         
+        # Eval Bar Toggle
+        self.chk_eval = QCheckBox("Show Eval Bar")
+        self.chk_eval.setChecked(False) # Default hidden
+        self.chk_eval.toggled.connect(self.toggle_eval)
+        settings_layout.addWidget(self.chk_eval)
+        
         self.chk_best_move = QCheckBox("Show Best Move Arrow")
         self.chk_best_move.toggled.connect(self.toggle_best_move)
         settings_layout.addWidget(self.chk_best_move)
@@ -76,10 +90,36 @@ class AnalysisDashboard(QWidget):
         layout.addWidget(settings_group)
         
         # Exit Button
-        self.btn_exit = QPushButton("Back to Game View")
+        self.btn_exit = QPushButton("Back to Menu")
         self.btn_exit.clicked.connect(self.exit_clicked)
         self.btn_exit.setStyleSheet("background-color: #34495e; padding: 10px;")
         layout.addWidget(self.btn_exit)
+
+    def set_current_move_classification(self, text):
+        # Map text to colors
+        colors = {
+            "brilliant": "#1ABC9C", # Cyan
+            "great": "#3498DB",     # Blue
+            "best": "#2ECC71",      # Green
+            "excellent": "#27AE60",
+            "good": "#BDC3C7",      # Grey
+            "inaccuracy": "#F39C12",# Orange
+            "mistake": "#E67E22",   # Dark Orange
+            "blunder": "#C0392B",   # Red
+            "forced": "#7F8C8D",
+            "book": "#9B59B6"
+        }
+        color = colors.get(text.lower(), "#ECF0F1")
+        
+        # Format Text
+        display_text = text.replace("_", " ").title()
+        if text.lower() == "brilliant": display_text += " !!"
+        elif text.lower() == "great": display_text += " !"
+        elif text.lower() == "blunder": display_text += " ??"
+        elif text.lower() == "mistake": display_text += " ?"
+        
+        self.lbl_current_move.setText(display_text)
+        self.lbl_current_move.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {color}; margin: 5px;")
 
     def update_stats(self, counts, accuracy):
         from PyQt6.QtGui import QPixmap
@@ -127,7 +167,9 @@ class InfoPanel(QWidget):
     pause_clicked = pyqtSignal()
     theme_clicked = pyqtSignal()
     analyze_clicked = pyqtSignal()
+    analyze_clicked = pyqtSignal()
     back_clicked = pyqtSignal()
+    resign_clicked = pyqtSignal()
     
     # Toggles
     toggle_eval_clicked = pyqtSignal(bool)
@@ -136,16 +178,33 @@ class InfoPanel(QWidget):
     
     # Analysis Signals
     exit_analysis_clicked = pyqtSignal()
+    
+    def set_classification(self, text):
+        """
+        Updates the move classification label.
+        Delegates to the active view (AnalysisDashboard or GameControls).
+        """
+        # Update Analysis Dashboard
+        if hasattr(self, 'analysis_dashboard'):
+             self.analysis_dashboard.set_current_move_classification(text)
+             
+        # Optional: could update GameControls if we wanted "Brilliant" to show there too.
+        # For now, just fix the AttributeError.
 
     def __init__(self):
         super().__init__()
         
-        self.stack_layout = QStackedLayout(self)
+        # Use a layout to hold the FadingStackedWidget
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.stack = FadingStackedWidget()
+        main_layout.addWidget(self.stack)
         
         # --- Page 1: Game Controls ---
         self.game_controls_widget = QWidget()
         self.init_game_controls()
-        self.stack_layout.addWidget(self.game_controls_widget)
+        self.stack.addWidget(self.game_controls_widget)
         
         # --- Page 2: Analysis Dashboard ---
         self.analysis_dashboard = AnalysisDashboard()
@@ -156,9 +215,10 @@ class InfoPanel(QWidget):
         self.analysis_dashboard.prev_clicked.connect(self.prev_clicked)
         self.analysis_dashboard.next_clicked.connect(self.next_clicked)
         self.analysis_dashboard.end_clicked.connect(self.end_clicked)
-        self.analysis_dashboard.toggle_best_move.connect(self.toggle_arrows_clicked) # Connect to same signal as game view
+        self.analysis_dashboard.toggle_best_move.connect(self.toggle_arrows_clicked) 
+        self.analysis_dashboard.toggle_eval.connect(self.toggle_eval_clicked)
         
-        self.stack_layout.addWidget(self.analysis_dashboard)
+        self.stack.addWidget(self.analysis_dashboard)
         
     def init_game_controls(self):
         layout = QVBoxLayout(self.game_controls_widget)
@@ -229,6 +289,13 @@ class InfoPanel(QWidget):
         actions_layout.addWidget(self.btn_flip)
         actions_layout.addWidget(self.btn_theme)
         actions_layout.addWidget(self.btn_pause)
+        
+        # Resign Button
+        self.btn_resign = QPushButton("End Game")
+        self.btn_resign.clicked.connect(self.resign_clicked)
+        self.btn_resign.setStyleSheet("background-color: #c0392b; color: white;")
+        actions_layout.addWidget(self.btn_resign)
+        
         controls_layout.addLayout(actions_layout)
         
         # Analysis Actions (Row 2 - Dedicated)
@@ -245,8 +312,11 @@ class InfoPanel(QWidget):
         settings_layout = QVBoxLayout(settings_group)
         
         self.chk_eval = QCheckBox("Show Eval Bar")
-        self.chk_eval.setChecked(True)
+        self.chk_eval.setChecked(False)
         self.chk_eval.toggled.connect(self.toggle_eval_clicked)
+        # Hide Eval Label if Bar is hidden (User Request)
+        self.chk_eval.toggled.connect(self.eval_label.setVisible)
+        self.eval_label.setVisible(False) # Initial state off
         
         self.chk_arrows = QCheckBox("Show Best Move Arrow")
         self.chk_arrows.setChecked(False) 
@@ -278,7 +348,10 @@ class InfoPanel(QWidget):
         
     def show_analysis(self):
         self.analysis_dashboard.chk_best_move.setChecked(self.chk_arrows.isChecked())
-        self.stack_layout.setCurrentWidget(self.analysis_dashboard)
+        # Sync Eval Visibility state
+        self.analysis_dashboard.chk_eval.setChecked(self.chk_eval.isChecked())
+        
+        self.stack.setCurrentWidget(self.analysis_dashboard)
         
     def show_game(self):
-        self.stack_layout.setCurrentWidget(self.game_controls_widget)
+        self.stack.setCurrentWidget(self.game_controls_widget)

@@ -31,6 +31,40 @@ class Styles:
         border: 1px solid #3e3e42;
         color: #d4d4d4;
     }
+    QCheckBox {
+        background: transparent;
+        color: #f0f0f0;
+    }
+    QCheckBox::indicator {
+        border: 1px solid #555;
+        border-radius: 2px;
+        background: #1e1e1e;
+        width: 14px;
+        height: 14px;
+    }
+    QCheckBox::indicator:checked {
+        background-color: #00B4D8;
+        border: 1px solid #00B4D8;
+    }
+    /* Simple colored box for checked state if no image */
+    QCheckBox::indicator:checked:hover {
+        background-color: #0093B2;
+    }
+    QRadioButton {
+        background: transparent;
+        color: #f0f0f0;
+    }
+    QRadioButton::indicator {
+        border: 1px solid #555;
+        border-radius: 7px;
+        background: #1e1e1e;
+        width: 14px;
+        height: 14px;
+    }
+    QRadioButton::indicator:checked {
+        background-color: #00B4D8;
+        border: 1px solid #00B4D8;
+    }
     """
     
     # Board Colors

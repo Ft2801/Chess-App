@@ -93,43 +93,59 @@ class AdvancedMoveClassifier:
     def _is_sacrifice(self, board: chess.Board, move: chess.Move) -> bool:
         """
         Check if move is a sacrifice (giving up material for positional gain).
-        Simplified check: Piece moves to square where it can be taken by less valuable piece,
-        OR piece captures less valuable piece while being taken.
+        Strict Logic: 
+        1. If capturing: Must capture strictly less value than moved piece.
+        2. If moving to danger:
+           - If UNDEFENDED: Any attack is a sacrifice (hanging piece).
+           - If DEFENDED: Only a sacrifice if attacked by a CHEAPER piece (exchange loss).
+        3. Equal trades are NOT sacrifices.
         """
         moved_piece = board.piece_at(move.from_square)
         if not moved_piece: return False
         
-        # 1. Capture Check (Exchange is not sacrifice)
-        captured_piece = board.piece_at(move.to_square)
         moved_val = PIECE_VALUES.get(moved_piece.piece_type, 0)
         
-        # If we capture something more valuable, unlikely a sacrifice (unless we lose queen for rook)
+        # 1. Capture Check
+        captured_piece = board.piece_at(move.to_square)
         if captured_piece:
              cap_val = PIECE_VALUES.get(captured_piece.piece_type, 0)
-             if cap_val >= moved_val: return False 
+             # If we capture something >= value, it's not a sacrifice (even if we lose it back).
+             # It's a trade or a win.
+             # RELAXATION: Treat Bishop (330) and Knight (320) as roughly equal.
+             # If we capture N(320) with B(330), difference is 10. This is a trade, not a sacrifice.
+             # So we ignore if cap_val >= moved_val - 50.
+             if cap_val >= moved_val - 50: return False 
         
-        # 2. Check if we are moving into danger (Defended square)
-        # Simulate move
+        # 2. Danger Check
         board.push(move)
-        attackers = board.attackers(not moved_piece.color, move.to_square)
+        
+        # Who attacks us? (Enemy)
+        attackers = board.attackers(board.turn, move.to_square)
         
         is_sac = False
         if attackers:
-            # We moved into fire.
-            # Are we defended?
-            # Even if defended, if we lose Q for N, it's a sac.
+            # We are under attack.
             
-            # Lowest value attacker
-            min_attacker_val = 9999
-            for sq in attackers:
-                p = board.piece_at(sq)
-                if p:
-                    v = PIECE_VALUES.get(p.piece_type, 0)
-                    min_attacker_val = min(min_attacker_val, v)
+            # Are we defended? (Friendly)
+            defenders = board.attackers(not board.turn, move.to_square)
             
-            # If we are attacked by something cheaper than us -> Sacrifice risk
-            if min_attacker_val < moved_val:
+            if not defenders:
+                # Undefended piece under attack -> Sacrifice (Hanging)
+                # (Since we already verified cap_val < moved_val, we lose material)
                 is_sac = True
+            else:
+                # Defended piece.
+                # It is a sacrifice ONLY if they can trade "up" 
+                # (capture us with a piece less valuable than ours).
+                min_attacker_val = 9999
+                for sq in attackers:
+                    p = board.piece_at(sq)
+                    if p:
+                        v = PIECE_VALUES.get(p.piece_type, 0)
+                        min_attacker_val = min(min_attacker_val, v)
+                
+                if min_attacker_val < moved_val:
+                    is_sac = True
                 
         board.pop()
         return is_sac

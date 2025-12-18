@@ -65,6 +65,7 @@ class GameController(QObject):
         
         # Signals
         self.view.info_panel.exit_analysis_clicked.connect(self.exit_post_game_analysis)
+        self.view.info_panel.resign_clicked.connect(self.handle_resign)
         
         # Direct Connection (Fixing missing signal emission)
         self.view.info_panel.btn_analyze.clicked.connect(self.start_post_game_analysis)
@@ -75,7 +76,7 @@ class GameController(QObject):
         self.view.info_panel.end_clicked.connect(lambda: self.navigate_history("end"))
         
         # Toggles
-        self.view.info_panel.toggle_eval_clicked.connect(self.view.eval_bar.setVisible)
+        self.view.info_panel.toggle_eval_clicked.connect(self.view.toggle_eval_visibility)
         self.view.info_panel.toggle_arrows_clicked.connect(self.toggle_arrows)
         self.view.info_panel.toggle_auto_rotate_clicked.connect(self.toggle_auto_rotate)
 
@@ -83,6 +84,7 @@ class GameController(QObject):
         self.view.main_menu.pvp_clicked.connect(lambda: self.start_new_game("PvP"))
         self.view.main_menu.pve_clicked.connect(self.start_pve_game)
         self.view.main_menu.eve_clicked.connect(self.start_eve_game)
+        self.view.main_menu.theme_selected.connect(self.apply_theme)
         
         # Engine -> Controller
         self.engine.best_move_found.connect(self.handle_engine_move)
@@ -91,7 +93,35 @@ class GameController(QObject):
 
     @pyqtSlot(str, str)
     def handle_eval_update(self, score, pv_move):
-        # Normalize Score to White's Perspective
+        # 1. PRIORITY: Check actual Board State for Checkmate
+        # Stockfish can be slightly delayed or weird with "#0".
+        # If the board says Mate, we show Mate/Result immediately and ignore Stockfish score.
+        is_mate_on_board = False
+        final_text = ""
+        
+        if self.model.is_checkmate():
+            is_mate_on_board = True
+            turn = self.model.get_turn()
+            
+            # LOGIC:
+            # If Turn is WHITE -> White has no moves -> White is Mated -> Black Wins.
+            # Winner: Black. Eval should be 0.0 (Full Black). Text "0-1".
+            
+            # If Turn is BLACK -> Black has no moves -> Black is Mated -> White Wins.
+            # Winner: White. Eval should be 1.0 (Full White). Text "1-0".
+            
+            if turn == chess.WHITE:
+                 final_text = "0-1"
+            else:
+                 final_text = "1-0"
+            
+            # Force update and RETURN to stop processing stockfish output
+            self.view.eval_bar.set_eval(final_text)
+            self.view.info_panel.update_eval(final_text, "")
+            self.engine.stop_search() # Stop engine on mate
+            return 
+
+        # 2. Normalize Stockfish Score (if game continues)
         # Stockfish returns score for "Side to Move".
         # We want "Positive = White Adv, Negative = Black Adv".
         # So if Side to Move is Black, we negate the score.
@@ -106,9 +136,23 @@ class GameController(QObject):
                 # If Black to play and "#3" -> Black wins in 3.
                 # White perspective: Black winning is Negative. -> "#-3"
                 val = int(score.replace("#", ""))
-                if is_black_turn:
-                    val = -val
-                normalized_score = f"#{val}"
+                
+                if val == 0:
+                    # Checkmate (M0). 
+                    # If it's Black's turn and they have M0 -> Black is mated -> White WON.
+                    # If it's White's turn and they have M0 -> White is mated -> Black WON.
+                    # Wait. Engine usually reports positive mate for Side to Move?
+                    # "Mate in 0" is usually reported as Checkmate.
+                    # Actually, if we are here, we trust the engine's output.
+                    # If Engine says "Mate 0", it means current side is Checkmated.
+                    if is_black_turn: # Black is mated
+                         normalized_score = "1-0"
+                    else: # White is mated
+                         normalized_score = "0-1"
+                else:
+                    if is_black_turn:
+                        val = -val
+                    normalized_score = f"#{val}"
             else:
                 # CP
                 # "+1.5" (Side to play is up 1.5)
@@ -127,12 +171,32 @@ class GameController(QObject):
             self.view.info_panel.update_eval(normalized_score, pv_move) 
             
         # Update Arrow (Live!)
-        if pv_move and not self.is_analyzing_game: # Block arrows during full analysis
+        if pv_move and not self.is_analyzing_game and not is_mate_on_board: 
             try:
                 move = chess.Move.from_uci(pv_move)
                 self.view.board_widget.set_best_move(move)
             except ValueError:
                 pass
+
+    def handle_resign(self):
+        if self.model.is_game_over(): return
+        
+        # Stop Engine
+        self.engine.stop_search()
+        self.seeking_move = False
+        self.eve_timer.stop()
+        self.eve_paused = False
+        
+        # Set Status
+        self.view.info_panel.set_status("Game Abandoned")
+        
+        # Enable Analysis (Treat as finished)
+        self.view.info_panel.btn_analyze.setVisible(True)
+        self.view.info_panel.btn_analyze.setEnabled(True)
+        self.view.info_panel.btn_analyze.setText("Analyze Game")
+        
+        # Disable controls that shouldn't work post-game
+        self.view.info_panel.btn_pause.setVisible(False)
 
     def start_new_game(self, mode):
         self.view.show_game()
@@ -172,8 +236,9 @@ class GameController(QObject):
         self.engine.set_difficulty(level)
         
         if self.player_color == chess.BLACK:
-             # Start engine immediately so eval updates
-             self.make_engine_move()
+             # Start engine after Transition Delay (1.8s)
+             # Transition: 400 In + 500 Hold + 400 Out = ~1.3s. +0.5s buffer = 1.8s.
+             QTimer.singleShot(1800, self.make_engine_move)
 
     def start_eve_game(self, white_level, black_level):
         self.start_new_game("EvE")
@@ -184,7 +249,7 @@ class GameController(QObject):
         
         self.view.info_panel.btn_pause.setVisible(True) # Show for EvE
         self.eve_timer.start(2000) 
-        self.make_engine_move()
+        QTimer.singleShot(1800, self.make_engine_move)
 
     def update_view(self):
         # Handle history view
@@ -213,6 +278,48 @@ class GameController(QObject):
         # Auto-Rotate
         if self.mode == "PvP" and self.auto_rotate and self.history_index is None:
              self.view.board_widget.set_flipped(board_to_show.turn == chess.BLACK)
+             
+        # Analysis Eval Sync
+        # Use current history index OR the latest index if live
+        current_idx = self.history_index if self.history_index is not None else len(self.model.move_history)
+        
+        if current_idx in self.analysis_results:
+            data = self.analysis_results[current_idx]
+            cp_val = data.get('cp', 0.0) # White's Eval
+            
+            # Convert to text
+            text_score = ""
+            if abs(cp_val) > 29000: # Mate
+                moves_to_mate = int((30000 - abs(cp_val)) / 100)
+                
+                if moves_to_mate == 0:
+                     # Checkmate has occurred on board (or engine sees it immediately)
+                     if cp_val > 0: text_score = "1-0"
+                     else: text_score = "0-1"
+                else:
+                    if cp_val > 0: text_score = f"M{moves_to_mate}"
+                    else: text_score = f"M{-moves_to_mate}"
+            else:
+                # CP
+                text_score = f"{cp_val / 100.0:+.2f}"
+            
+            self.view.eval_bar.set_eval(text_score)
+            self.view.info_panel.update_eval(text_score, data.get('best_move', ''))
+            
+            # Update Move Classification Label
+            # Classification applies to the move that CAUSED this position.
+            # That move is at index: current_idx - 1.
+            move_type = ""
+            if current_idx > 0:
+                prev_idx = current_idx - 1
+                if prev_idx in self.analysis_results:
+                    move_type = self.analysis_results[prev_idx].get('type', '')
+            
+            self.view.info_panel.set_classification(move_type)
+        else:
+             # If no analysis data available for this step, clear interactions?
+             # For now, keep previous or clear? Clearing might flash.
+             pass
 
     def handle_human_move(self, move):
         if self.history_index is not None:
@@ -238,6 +345,9 @@ class GameController(QObject):
             if self.model.is_game_over(): self.eve_timer.stop()
             return
             
+        # CRITICAL: Stop any existing search (e.g. analysis) before starting turn
+        self.engine.stop_search()
+            
         if self.mode == "EvE":
             if self.model.get_turn() == chess.WHITE:
                 self.engine.set_difficulty(getattr(self, 'eve_level_white', 8))
@@ -261,15 +371,33 @@ class GameController(QObject):
         if not self.seeking_move:
              return
         
-        self.seeking_move = False
         try:
             move = chess.Move.from_uci(best_move_str)
             
+            # GHOST MOVE FILTER:
+            # If we interrupted a previous search (e.g. analysis), the engine sends a 'bestmove'.
+            # This move might be for the WRONG position (the one being analyzed previously).
+            # If so, it will likely be illegal for the current board state.
+            # We must IGNORE it and keep 'seeking_move = True' for the real move coming next.
+            if move not in self.model.board.legal_moves:
+                # print(f"DEBUG: Ignored ghost/illegal move {best_move_str}. Still seeking.")
+                return 
+
+            # Move is Valid!
+            self.seeking_move = False
+            
             if self.is_analyzing_only:
                 self.is_analyzing_only = False 
+                # If just analyzing, we don't make the move? 
+                # Wait, analyze_position sets checking_move=True?
+                # analyze_position sets is_analyzing_only=True.
+                # If is_analyzing_only, we usually just update arrows (via eval update) and ignore bestmove?
+                # Actually, analyze_position stops searching when bestmove arrives?
+                # No, we usually let it run until we stop it.
+                # If we received bestmove while analyzing, it means it finished depth or time.
                 return 
             
-            # Real Move found.
+            # Real Move found for Bot
             import time
             elapsed = (time.time() - getattr(self, 'engine_start_time', 0)) * 1000 # ms
             delay = max(0, 1000 - int(elapsed))
@@ -283,12 +411,23 @@ class GameController(QObject):
             pass
             
     def finish_engine_move(self, move):
+        # RACE CONDITION CHECK:
+        # Since we use a QTimer delay, the board might have changed (e.g. user New Game, Undo).
+        # We must re-verify legality before executing.
+        if move not in self.model.board.legal_moves:
+             # This is expected during fast UI interactions or analysis interrupts.
+             # Silently ignore.
+             return
+
         if self.model.make_move(move):
             self.update_view()
             if self.mode == "PvP":
                 self.analyze_position()
             elif self.mode == "PvE":
                 self.analyze_position()
+        else:
+             # Should be unreachable due to check above, but keeping safety.
+             pass
 
     def analyze_position(self):
         if not self.model.is_game_over():
@@ -299,7 +438,7 @@ class GameController(QObject):
              # Force Engine to Max Strength for Analysis
              # This ensures arrows/eval are accurate even if Bot is Level 1.
              self.engine.send_command("setoption name Skill Level value 20")
-             self.engine.go(depth=14) 
+             self.engine.go(depth=20) 
 
     def navigate_history(self, direction):
         # Hide promotion dialog when navigating
@@ -389,16 +528,12 @@ class GameController(QObject):
              print("DEBUG: No history.")
              return
             
-        self.is_analyzing_game = True
-        self.analysis_results = {}
-        self.analysis_index = 0
-        
-        # UI Feedback
-        self.view.info_panel.btn_analyze.setEnabled(False)
-        self.view.info_panel.btn_analyze.setText("Analyzing...")
-        self.view.info_panel.set_status("Analyzing game...")
-        
-        # Stop any background analysis
+        if not self.model.move_history:
+             QMessageBox.warning(self.view, "Analysis", "No game history to analyze!")
+             print("DEBUG: No history.")
+             return
+            
+        # Stop any background analysis first
         self.engine.stop_search()
         self.seeking_move = False
         self.is_analyzing_only = False
@@ -407,12 +542,21 @@ class GameController(QObject):
         self.view.board_widget.set_best_move(None)
         self.view.board_widget.set_annotation(None)
         
-        # Start Loop
-        # Small delay to ensure engine stopped?
-        QTimer.singleShot(100, self.analyze_next_step)
+        # UI Feedback
+        self.view.info_panel.btn_analyze.setEnabled(False)
+        self.view.info_panel.btn_analyze.setText("Initializing...")
+        
+        # Critical: Delay setting state to TRUE until we are sure previous engine output is flushed.
+        QTimer.singleShot(200, self.begin_analysis_loop)
+
+    def begin_analysis_loop(self):
+        self.is_analyzing_game = True
+        self.analysis_results = {}
+        self.analysis_index = 0
+        self.view.info_panel.set_status("Analyzing game...")
+        self.analyze_next_step()
 
     def analyze_next_step(self):
-        print(f"DEBUG: Analyzing step {self.analysis_index}")
         # Check if done
         # We need to go up to index == len(history) (State after last move)
         if self.analysis_index > len(self.model.move_history):
@@ -431,20 +575,45 @@ class GameController(QObject):
             
         self.current_analysis_board = board 
         
+        # TERMINAL STATE HANDLING:
+        # If the game is over, the engine might give weird results or just "mate 0".
+        # We handle it explicitly to ensure correct "Loss" calculation for the final move.
+        if board.is_game_over():
+            # Determine Score from Side-To-Move perspective
+            # If Checked -> Checkmate -> -30000 (We lost)
+            # Else -> Stalemate/Draw -> 0
+            
+            cp = 0
+            if board.is_checkmate():
+                 cp = -30000 # Side to move is mated
+            
+            # Simulate Engine Result
+            # pvs[1] = {'cp': cp, 'pv_move': ''}
+            pvs = { 1: {'cp': cp, 'pv_move': ''} }
+            
+            # Proceed immediately
+            self.handle_analysis_complete(pvs)
+            return
+
         # Send position to engine
         self.engine.set_position(board.fen())
         
         # Start Analysis
-        self.engine.go(depth=16) 
+        # Enable MultiPV to allow "Great Move" detection (comparing best vs second best)
+        self.engine.send_command("setoption name MultiPV value 3")
+        self.engine.go(depth=20) 
         
         # Safety Timeout: If engine hangs for > 10 seconds, force next step
         QTimer.singleShot(10000, lambda: self.force_next_analysis_step(self.analysis_index))
 
     def force_next_analysis_step(self, expected_index):
         if self.is_analyzing_game and self.analysis_index == expected_index:
-            # Verify engine is running, maybe restart it? 
-            # For now, just pretend we got empty results
-            self.handle_analysis_complete({}) 
+            # Engine stuck? Stop it to force output flush (which we'll ignore/handle)
+            # print(f"DEBUG: Timeout at step {expected_index}. Sending STOP to force progress.")
+            self.engine.stop_search()
+            # Do NOT call handle_analysis_complete manually. 
+            # The 'stop' command will trigger 'bestmove' from engine, 
+            # which will trigger handle_analysis_complete via signal. 
 
     def handle_analysis_complete(self, pvs):
         """
@@ -454,13 +623,39 @@ class GameController(QObject):
             return
             
         try:
-            # Extract Score / Best Move / Second Best Score
-            cp = 0.0
+            # 0. Sync Check: Validate Move against Current Analysis Board
+            # Reconstruct board state for current index to verify move legality
+            # self.current_analysis_board SHOULD match self.analysis_index
+            # But let's rely on reconstruction to be 100% safe
+            check_board = chess.Board()
+            for i in range(self.analysis_index):
+                check_board.push(self.model.move_history[i])
+            
+            # Extract Best Move
             best_move_uci = ""
+            cp = 0.0
             second_best_cp = None
             
+            if pvs and 1 in pvs:
+                info = pvs[1]
+                best_move_uci = info.get('pv_move', '')
+                
+                # VALIDATION: Check if move is legal
+                if best_move_uci:
+                    try:
+                        move = chess.Move.from_uci(best_move_uci)
+                        if move not in check_board.legal_moves:
+                            print(f"WARNING: Illegal move {best_move_uci} suggested for step {self.analysis_index}. Discarding.")
+                            # Discard this result? Or just the move? 
+                            # If move is illegal, result is probably garbage.
+                            pvs = {} 
+                            best_move_uci = ""
+                    except:
+                        best_move_uci = ""
+            
+            # Extract Score / Second Best Score (from validated pvs)
             if pvs:
-                # Top Move
+                # Top Move (re-extract)
                 if 1 in pvs:
                     info = pvs[1]
                     if info.get('mate') is not None:
@@ -660,8 +855,18 @@ class GameController(QObject):
         self.update_board_visuals()
 
     def exit_post_game_analysis(self):
-        self.view.info_panel.show_game()
-        # User requested explicit reset of analysis artifacts when closing
+        print("DEBUG: exit_post_game_analysis triggered")
+        # 1. Transition to Main Menu immediately (Starts Fade Out)
+        self.view.show_menu()
+        print("DEBUG: show_menu called (Transition Start)")
+        
+        # 2. Reset InfoPanel to Game Controls *during* the transition hold.
+        # Transition: 400ms fade in -> 500ms hold -> 400ms fade out.
+        # We trigger the switch at 600ms so it happens safely while screen is black.
+        # Make the lambda explicit to debug if needed
+        QTimer.singleShot(600, lambda: (print("DEBUG: Switching InfoPanel to Game now"), self.view.info_panel.show_game()))
+        
+        # 3. Clear Analysis Artifacts
         self.analysis_results = {} 
         self.view.board_widget.set_annotation(None)
         self.view.board_widget.set_best_move(None)
@@ -745,16 +950,18 @@ class GameController(QObject):
         except ValueError:
              current_idx = 0
              
-        # Import internally or ensure top-level import covers it. 
-        # Styles is needed. I'll use strings hardcoded or cleaner import.
-        # Actually, let's just use the strings, or better, import Styles properly.
-        from src.utils.styles import Styles
-        themes = list(Styles.THEMES.keys())
-        
-        item, ok = QInputDialog.getItem(self.view, "Select Theme", "Choose Board Theme:", themes, current_idx, False)
-        
+        item, ok = QInputDialog.getItem(self.view, "Select Theme", "Theme:", themes, current_idx, False)
         if ok and item:
-            self.view.board_widget.set_theme(item)
+            self.apply_theme(item)
+
+    @pyqtSlot(str)
+    def apply_theme(self, theme_name):
+        self.view.board_widget.set_theme(theme_name)
+        # Also update Menu Preview just in case (though it updates itself locally)
+        self.view.main_menu.theme_preview.set_theme(theme_name) 
+        # Update combo in menu if changed from InfoPanel
+        self.view.main_menu.combo_theme.setCurrentText(theme_name)
+
 
     def toggle_pause(self):
         self.eve_paused = not self.eve_paused

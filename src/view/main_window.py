@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QSplitter, 
-    QStackedLayout, QVBoxLayout
+    QStackedLayout, QVBoxLayout, QStackedWidget, QGraphicsOpacityEffect
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QAbstractAnimation
+from src.view.fading_widget import FadingStackedWidget
 from src.view.board_widget import BoardWidget
 from src.view.info_panel import InfoPanel
 from src.view.main_menu import MainMenu
@@ -11,6 +12,12 @@ from src.view.captured_pieces import CapturedPiecesWidget
 from src.utils.styles import Styles
 
 class MainWindow(QMainWindow):
+    def toggle_eval_visibility(self, visible):
+        # We manipulate opacity instead of visibility to maintain layout size
+        effect = QGraphicsOpacityEffect(self.eval_bar)
+        effect.setOpacity(1.0 if visible else 0.0)
+        self.eval_bar.setGraphicsEffect(effect)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Professional Chess App")
@@ -24,7 +31,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         
         # Stacked Layout: Index 0 = Menu, Index 1 = Game
-        self.stack = QStackedLayout(central)
+        # Replaced QStackedLayout with FadingStackedWidget for smooth transitions
+        self.stack = FadingStackedWidget(central)
+        
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.stack)
         
         # --- Screen 1: Main Menu ---
         self.main_menu = MainMenu()
@@ -61,7 +73,15 @@ class MainWindow(QMainWindow):
         
         # 4. Eval Bar (Vertical)
         self.eval_bar = EvalBar()
-        self.eval_bar.setVisible(True) # Default visible
+        self.eval_bar.setFixedWidth(20)
+        
+        # Retention Policy
+        sp = self.eval_bar.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        self.eval_bar.setSizePolicy(sp)
+        
+        # Default Hidden (Opacity 0)
+        self.toggle_eval_visibility(False)
         
         # 5. Info Panel
         self.info_panel = InfoPanel()

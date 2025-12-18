@@ -101,8 +101,9 @@ class EngineThread(QThread):
         """
         Sets engine difficulty based on defined levels (1-8).
         """
-        # User defined levels:
-        # ... (Levels map kept same)
+        # Disable Elo limiting to use raw Skill Level
+        self.send_command("setoption name UCI_LimitStrength value false")
+        
         levels = {
             1: {"skill": -9, "depth": 1, "time": 50},
             2: {"skill": -5, "depth": 2, "time": 100},
@@ -123,6 +124,7 @@ class EngineThread(QThread):
         self.difficulty_movetime = config["time"]
 
         self.send_command(f"setoption name Skill Level value {self.difficulty_skill}")
+
 
     def run(self):
         """
